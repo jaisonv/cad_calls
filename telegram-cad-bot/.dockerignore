@@ -1,0 +1,10 @@
+*.db
+*.log
+.git
+.gitignore
+*.md
+Dockerfile
+docker-compose.yml
+cadbot
+data/
+cadcalls_results/
