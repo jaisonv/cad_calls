@@ -135,7 +135,12 @@ func (c *Client) GetActiveCalls(take int) (*CADResponse, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+		bodyStr := string(body)
+		if len(bodyStr) > 500 {
+			bodyStr = bodyStr[:500] + "..."
+		}
+		return nil, fmt.Errorf("API returned status %d.\nURL: %s\nResponse: %s",
+			resp.StatusCode, apiURL, bodyStr)
 	}
 
 	body, err := io.ReadAll(resp.Body)
