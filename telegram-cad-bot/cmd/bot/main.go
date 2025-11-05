@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -15,11 +16,9 @@ import (
 func main() {
 	// Command line flags
 	token := flag.String("token", os.Getenv("TELEGRAM_BOT_TOKEN"), "Telegram bot token")
-	baseURL := flag.String("base-url", "https://southmiamipdfl.policetocitizen.com", "CAD API base URL")
-	agencyID := flag.Int("agency-id", 386, "Agency ID")
+	pythonScript := flag.String("python-script", "", "Path to direct_api_post.py script")
 	dbPath := flag.String("db", "./cadbot.db", "Database file path")
 	checkInterval := flag.Int("interval", 5, "Check interval in minutes")
-	verifySSL := flag.Bool("verify-ssl", false, "Verify SSL certificates")
 	flag.Parse()
 
 	if *token == "" {
@@ -28,18 +27,34 @@ func main() {
 
 	logger := log.New(os.Stdout, "[CADBot] ", log.LstdFlags)
 
+	// Determine Python script path
+	scriptPath := *pythonScript
+	if scriptPath == "" {
+		// Default: assume script is in parent directory
+		cwd, err := os.Getwd()
+		if err != nil {
+			log.Fatalf("Failed to get current directory: %v", err)
+		}
+		scriptPath = filepath.Join(cwd, "..", "direct_api_post.py")
+		logger.Printf("Using default Python script path: %s", scriptPath)
+	}
+
+	// Verify the script exists
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		log.Fatalf("Python script not found at: %s\nPlease configure your config.py or use -python-script flag", scriptPath)
+	}
+
 	// Create bot configuration
 	config := &bot.Config{
-		TelegramToken: *token,
-		BaseURL:       *baseURL,
-		AgencyID:      *agencyID,
-		VerifySSL:     *verifySSL,
-		Timeout:       30 * time.Second,
-		DBPath:        *dbPath,
+		TelegramToken:    *token,
+		PythonScriptPath: scriptPath,
+		DBPath:           *dbPath,
 	}
 
 	// Initialize bot
 	logger.Println("Initializing bot...")
+	logger.Printf("Python script: %s", scriptPath)
+	logger.Printf("Database: %s", *dbPath)
 	b, err := bot.NewBot(config, logger)
 	if err != nil {
 		log.Fatalf("Failed to create bot: %v", err)
@@ -60,6 +75,7 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	logger.Println("Bot is running. Press Ctrl+C to stop.")
+	logger.Println("Make sure your config.py is configured with the correct BASE_URL and AGENCY_ID")
 	<-sigChan
 
 	// Graceful shutdown

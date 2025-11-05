@@ -135,15 +135,14 @@ func (b *Bot) HandleStatus(c tele.Context) error {
 ⏱ Check Interval: %d minutes
 📅 Member Since: %s
 
-🌐 *CAD Source:*
-%s
+🐍 *CAD Source:*
+Python script (uses config.py settings)
 
 Use /interval <minutes> to change check frequency (1-60 min).`,
 		userID,
 		len(streets),
 		user.CheckInterval,
 		user.CreatedAt.Format("2006-01-02"),
-		b.config.BaseURL,
 	)
 
 	return c.Send(msg, &tele.SendOptions{ParseMode: tele.ModeMarkdown})

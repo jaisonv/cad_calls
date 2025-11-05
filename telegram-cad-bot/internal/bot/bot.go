@@ -13,12 +13,9 @@ import (
 
 // Config holds the bot configuration
 type Config struct {
-	TelegramToken string
-	BaseURL       string
-	AgencyID      int
-	VerifySSL     bool
-	Timeout       time.Duration
-	DBPath        string
+	TelegramToken    string
+	PythonScriptPath string
+	DBPath           string
 }
 
 // Bot represents the Telegram bot
@@ -38,8 +35,8 @@ func NewBot(config *Config, logger *log.Logger) (*Bot, error) {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// Initialize CAD client
-	cadClient := cad.NewClient(config.BaseURL, config.AgencyID, config.VerifySSL, config.Timeout)
+	// Initialize CAD client (uses Python script)
+	cadClient := cad.NewClient(config.PythonScriptPath, "")
 
 	// Initialize Telegram bot
 	pref := tele.Settings{
