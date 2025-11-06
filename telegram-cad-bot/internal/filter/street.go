@@ -1,22 +1,54 @@
 package filter
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/jaisonv/telegram-cad-bot/internal/cad"
 )
 
+var (
+	// Regex to match multiple spaces
+	multipleSpaces = regexp.MustCompile(`\s+`)
+)
+
+// normalizeStreet normalizes a street name for consistent matching
+// - Converts to lowercase
+// - Removes periods
+// - Collapses multiple spaces into one
+// - Trims leading/trailing spaces
+func normalizeStreet(s string) string {
+	// Convert to lowercase
+	s = strings.ToLower(s)
+
+	// Remove periods
+	s = strings.ReplaceAll(s, ".", "")
+
+	// Remove commas
+	s = strings.ReplaceAll(s, ",", "")
+
+	// Collapse multiple spaces into single space
+	s = multipleSpaces.ReplaceAllString(s, " ")
+
+	// Trim spaces
+	s = strings.TrimSpace(s)
+
+	return s
+}
+
 // MatchStreet checks if a CAD call address matches any of the monitored streets
-// Uses case-insensitive partial matching
+// Uses case-insensitive partial matching with normalization
 func MatchStreet(call *cad.CADCall, monitoredStreets []string) bool {
 	if call.Address == "" {
 		return false
 	}
 
-	callAddress := strings.ToLower(call.Address)
+	// Normalize the call address
+	callAddress := normalizeStreet(call.Address)
 
 	for _, street := range monitoredStreets {
-		monitoredStreet := strings.ToLower(strings.TrimSpace(street))
+		// Normalize the monitored street
+		monitoredStreet := normalizeStreet(street)
 		if monitoredStreet == "" {
 			continue
 		}
