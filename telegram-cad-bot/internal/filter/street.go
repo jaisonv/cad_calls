@@ -81,6 +81,7 @@ func matchesWithAbbreviations(address, street string) bool {
 		"place":     {"pl"},
 		"circle":    {"cir"},
 		"way":       {"wy"},
+		"view":      {"vw"},
 	}
 
 	// Check if expanding abbreviations creates a match
