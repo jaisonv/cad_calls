@@ -26,8 +26,11 @@ func NewClient(pythonScriptPath, configPath string) *Client {
 
 // GetActiveCalls fetches active CAD calls by executing the Python script
 func (c *Client) GetActiveCalls(take int) (*CADResponse, error) {
+	// Determine which Python interpreter to use
+	pythonCmd := c.findPythonInterpreter()
+
 	// Execute the Python script
-	cmd := exec.Command("python3", c.PythonScriptPath,
+	cmd := exec.Command(pythonCmd, c.PythonScriptPath,
 		"--take", fmt.Sprintf("%d", take),
 		"--open",
 		"--quiet",
@@ -83,6 +86,29 @@ func (c *Client) GetActiveCalls(take int) (*CADResponse, error) {
 	}
 
 	return &cadResp, nil
+}
+
+// findPythonInterpreter finds the best Python interpreter to use
+// Prefers venv Python if available, falls back to system python3
+func (c *Client) findPythonInterpreter() string {
+	// Get the directory of the Python script
+	scriptDir := filepath.Dir(c.PythonScriptPath)
+
+	// Check for venv in the script's directory
+	venvPython := filepath.Join(scriptDir, "venv", "bin", "python3")
+	if _, err := os.Stat(venvPython); err == nil {
+		return venvPython
+	}
+
+	// Check for venv in parent directory (common setup)
+	parentDir := filepath.Dir(scriptDir)
+	venvPython = filepath.Join(parentDir, "venv", "bin", "python3")
+	if _, err := os.Stat(venvPython); err == nil {
+		return venvPython
+	}
+
+	// Fall back to system python3
+	return "python3"
 }
 
 // NewClientFromConfig creates a client using config.py settings
