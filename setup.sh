@@ -93,6 +93,9 @@ install_go() {
             GO_ARCH="amd64"
         elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
             GO_ARCH="arm64"
+        elif [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "armv6l" ]; then
+            GO_ARCH="armv6l"
+            print_info "Detected Raspberry Pi (32-bit ARM)"
         else
             print_error "Unsupported architecture: $ARCH"
             exit 1
