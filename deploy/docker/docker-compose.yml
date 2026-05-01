@@ -1,0 +1,18 @@
+services:
+  cadbot:
+    image: alpine:latest
+    container_name: cadbot
+    restart: unless-stopped
+    volumes:
+      - ./cadbot:/cadbot
+      - ./data:/data
+      - ./cad_calls:/cad-calls
+      - ./setup.sh:/setup.sh
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - CAD_BASE_URL=${CAD_BASE_URL}
+      - CAD_AGENCY_ID=${CAD_AGENCY_ID}
+      - CHECK_INTERVAL=${CHECK_INTERVAL:-5}
+      - VERIFY_SSL=${VERIFY_SSL:-false}
+      - ADMIN_USER_IDS=${ADMIN_USER_IDS}
+    entrypoint: ["/bin/sh", "/setup.sh"]
