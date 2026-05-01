@@ -9,8 +9,17 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
+func (b *Bot) syncUserProfile(c tele.Context) {
+	s := c.Sender()
+	if s == nil {
+		return
+	}
+	_ = b.db.UpsertUserProfile(s.ID, s.Username, s.FirstName, s.LastName)
+}
+
 // HandleStart handles the /start command
 func (b *Bot) HandleStart(c tele.Context) error {
+	b.syncUserProfile(c)
 	msg := `👋 Welcome to CAD Calls Monitor Bot!
 
 This bot monitors active CAD (Computer Aided Dispatch) calls and alerts you about incidents on streets you're watching.
@@ -23,6 +32,7 @@ This bot monitors active CAD (Computer Aided Dispatch) calls and alerts you abou
 /status - Show bot status and settings
 /interval <minutes> - Set check interval (1-60 minutes)
 /check - Manually check for new calls now
+/users - Admin: list users and monitored streets
 /help - Show this help message
 
 *Example:*
@@ -41,6 +51,7 @@ func (b *Bot) HandleHelp(c tele.Context) error {
 
 // HandleAdd handles the /add command
 func (b *Bot) HandleAdd(c tele.Context) error {
+	b.syncUserProfile(c)
 	args := strings.TrimSpace(c.Text())
 	// Remove the command part
 	streetName := strings.TrimPrefix(args, "/add")
@@ -61,6 +72,7 @@ func (b *Bot) HandleAdd(c tele.Context) error {
 
 // HandleRemove handles the /remove command
 func (b *Bot) HandleRemove(c tele.Context) error {
+	b.syncUserProfile(c)
 	args := strings.TrimSpace(c.Text())
 	streetName := strings.TrimPrefix(args, "/remove")
 	streetName = strings.TrimSpace(streetName)
@@ -83,6 +95,7 @@ func (b *Bot) HandleRemove(c tele.Context) error {
 
 // HandleList handles the /list command
 func (b *Bot) HandleList(c tele.Context) error {
+	b.syncUserProfile(c)
 	userID := c.Sender().ID
 	streets, err := b.db.GetMonitoredStreets(userID)
 	if err != nil {
@@ -104,6 +117,7 @@ func (b *Bot) HandleList(c tele.Context) error {
 
 // HandleClear handles the /clear command
 func (b *Bot) HandleClear(c tele.Context) error {
+	b.syncUserProfile(c)
 	userID := c.Sender().ID
 	if err := b.db.ClearMonitoredStreets(userID); err != nil {
 		b.logger.Printf("Error clearing streets for user %d: %v", userID, err)
@@ -115,6 +129,7 @@ func (b *Bot) HandleClear(c tele.Context) error {
 
 // HandleStatus handles the /status command
 func (b *Bot) HandleStatus(c tele.Context) error {
+	b.syncUserProfile(c)
 	userID := c.Sender().ID
 	user, err := b.db.GetOrCreateUser(userID)
 	if err != nil {
@@ -150,6 +165,7 @@ Use /interval <minutes> to change check frequency (1-60 min).`,
 
 // HandleInterval handles the /interval command
 func (b *Bot) HandleInterval(c tele.Context) error {
+	b.syncUserProfile(c)
 	args := strings.TrimSpace(c.Text())
 	intervalStr := strings.TrimPrefix(args, "/interval")
 	intervalStr = strings.TrimSpace(intervalStr)
@@ -174,6 +190,7 @@ func (b *Bot) HandleInterval(c tele.Context) error {
 
 // HandleCheck handles the /check command (manual check)
 func (b *Bot) HandleCheck(c tele.Context) error {
+	b.syncUserProfile(c)
 	userID := c.Sender().ID
 
 	// Check if user has any monitored streets
@@ -204,6 +221,48 @@ func (b *Bot) HandleCheck(c tele.Context) error {
 
 	b.bot.Edit(msg, fmt.Sprintf("✅ Found %d new call(s)! Sending details...", len(newCalls)))
 	return nil
+}
+
+func (b *Bot) HandleUsers(c tele.Context) error {
+	b.syncUserProfile(c)
+	requesterID := c.Sender().ID
+	if !b.isAdmin(requesterID) {
+		return c.Send("❌ You are not authorized to use this command.")
+	}
+
+	users, err := b.db.GetAllUsersMonitoring()
+	if err != nil {
+		b.logger.Printf("Error getting users monitoring list: %v", err)
+		return c.Send("❌ Failed to retrieve users.")
+	}
+
+	if len(users) == 0 {
+		return c.Send("No users found.")
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("👥 *Users Monitoring Streets* (%d users)\n\n", len(users)))
+	for _, u := range users {
+		display := strings.TrimSpace(strings.TrimSpace(u.FirstName + " " + u.LastName))
+		if display == "" {
+			display = "(no name)"
+		}
+		sb.WriteString(fmt.Sprintf("• `%d`", u.TelegramID))
+		if u.Username != "" {
+			sb.WriteString(fmt.Sprintf(" @%s", u.Username))
+		}
+		sb.WriteString(fmt.Sprintf(" - %s\n", display))
+		sb.WriteString(fmt.Sprintf("  streets (%d): ", u.StreetCount))
+		if len(u.Streets) == 0 {
+			sb.WriteString("none\n")
+		} else {
+			sb.WriteString(strings.Join(u.Streets, ", "))
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fmt.Sprintf("  interval: %d min\n\n", u.CheckInterval))
+	}
+
+	return c.Send(sb.String(), &tele.SendOptions{ParseMode: tele.ModeMarkdown})
 }
 
 // FormatCallMessage formats a CAD call into a readable message

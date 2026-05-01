@@ -39,8 +39,12 @@ func (db *DB) initSchema() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
 		telegram_id INTEGER PRIMARY KEY,
+		username TEXT DEFAULT '',
+		first_name TEXT DEFAULT '',
+		last_name TEXT DEFAULT '',
 		check_interval INTEGER DEFAULT 5,
-		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS monitored_streets (
@@ -63,6 +67,24 @@ func (db *DB) initSchema() error {
 	`
 
 	_, err := db.conn.Exec(schema)
+	if err != nil {
+		return err
+	}
+
+	// Backward-compatible migrations for existing DBs.
+	_ = db.ensureColumn("users", "username", "TEXT DEFAULT ''")
+	_ = db.ensureColumn("users", "first_name", "TEXT DEFAULT ''")
+	_ = db.ensureColumn("users", "last_name", "TEXT DEFAULT ''")
+	_ = db.ensureColumn("users", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+	return nil
+}
+
+func (db *DB) ensureColumn(tableName, columnName, definition string) error {
+	_, err := db.conn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", tableName, columnName, definition))
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+		return nil
+	}
 	return err
 }
 
@@ -70,27 +92,82 @@ func (db *DB) initSchema() error {
 func (db *DB) GetOrCreateUser(telegramID int64) (*User, error) {
 	user := &User{}
 	err := db.conn.QueryRow(`
-		SELECT telegram_id, check_interval, created_at
+		SELECT telegram_id, COALESCE(username, ''), COALESCE(first_name, ''), COALESCE(last_name, ''), check_interval, created_at, COALESCE(updated_at, created_at)
 		FROM users WHERE telegram_id = ?
-	`, telegramID).Scan(&user.TelegramID, &user.CheckInterval, &user.CreatedAt)
+	`, telegramID).Scan(&user.TelegramID, &user.Username, &user.FirstName, &user.LastName, &user.CheckInterval, &user.CreatedAt, &user.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		// Create new user
 		now := time.Now()
 		_, err = db.conn.Exec(`
-			INSERT INTO users (telegram_id, check_interval, created_at)
-			VALUES (?, 5, ?)
-		`, telegramID, now)
+			INSERT INTO users (telegram_id, check_interval, created_at, updated_at)
+			VALUES (?, 5, ?, ?)
+		`, telegramID, now, now)
 		if err != nil {
 			return nil, err
 		}
 		user.TelegramID = telegramID
 		user.CheckInterval = 5
 		user.CreatedAt = now
+		user.UpdatedAt = now
 		return user, nil
 	}
 
 	return user, err
+}
+
+func (db *DB) UpsertUserProfile(telegramID int64, username, firstName, lastName string) error {
+	_, err := db.GetOrCreateUser(telegramID)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.conn.Exec(`
+		UPDATE users
+		SET username = ?, first_name = ?, last_name = ?, updated_at = ?
+		WHERE telegram_id = ?
+		`, username, firstName, lastName, time.Now(), telegramID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (db *DB) GetAllUsersMonitoring() ([]UserMonitoring, error) {
+	rows, err := db.conn.Query(`
+		SELECT
+			u.telegram_id,
+			COALESCE(u.username, ''),
+			COALESCE(u.first_name, ''),
+			COALESCE(u.last_name, ''),
+			u.check_interval,
+			COUNT(ms.street_name) AS street_count,
+			COALESCE(GROUP_CONCAT(ms.street_name, '|'), '') AS streets
+		FROM users u
+		LEFT JOIN monitored_streets ms ON ms.telegram_id = u.telegram_id
+		GROUP BY u.telegram_id, u.username, u.first_name, u.last_name, u.check_interval
+		ORDER BY street_count DESC, u.telegram_id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []UserMonitoring
+	for rows.Next() {
+		var row UserMonitoring
+		var streetBlob string
+		if err := rows.Scan(&row.TelegramID, &row.Username, &row.FirstName, &row.LastName, &row.CheckInterval, &row.StreetCount, &streetBlob); err != nil {
+			return nil, err
+		}
+		if streetBlob != "" {
+			row.Streets = strings.Split(streetBlob, "|")
+		}
+		out = append(out, row)
+	}
+
+	return out, nil
 }
 
 // AddMonitoredStreet adds a street to a user's watch list

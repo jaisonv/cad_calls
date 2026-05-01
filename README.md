@@ -60,6 +60,16 @@ Basic usage:
 python direct_api_post.py
 ```
 
+## Server Deployment
+
+If you deploy this through a separate infra repo (for example `server-setup`), use the documented Docker-only flow in `INSTALL.md`:
+
+- Build Linux binary with CGO enabled
+- Copy `cadbot`, `setup.sh`, `docker-compose.yml`, `.env`, and `cad_calls/` into `server-setup/cad-bot/`
+- Start with `docker-compose up -d`
+
+See: [INSTALL.md](INSTALL.md) → "Deploy With `server-setup`" and [deploy/docker/README.md](deploy/docker/README.md) for the deploy bundle files.
+
 Command line options:
 
 ```

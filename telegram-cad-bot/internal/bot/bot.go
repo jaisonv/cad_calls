@@ -16,6 +16,7 @@ type Config struct {
 	TelegramToken    string
 	PythonScriptPath string
 	DBPath           string
+	AdminUserIDs     map[int64]struct{}
 }
 
 // Bot represents the Telegram bot
@@ -74,6 +75,12 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/status", b.HandleStatus)
 	b.bot.Handle("/interval", b.HandleInterval)
 	b.bot.Handle("/check", b.HandleCheck)
+	b.bot.Handle("/users", b.HandleUsers)
+}
+
+func (b *Bot) isAdmin(userID int64) bool {
+	_, ok := b.config.AdminUserIDs[userID]
+	return ok
 }
 
 // Start starts the bot

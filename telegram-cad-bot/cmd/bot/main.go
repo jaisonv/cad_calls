@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -49,6 +51,7 @@ func main() {
 		TelegramToken:    *token,
 		PythonScriptPath: scriptPath,
 		DBPath:           *dbPath,
+		AdminUserIDs:     parseAdminUserIDs(os.Getenv("ADMIN_USER_IDS")),
 	}
 
 	// Initialize bot
@@ -83,4 +86,20 @@ func main() {
 	poller.Stop()
 	b.Stop()
 	logger.Println("Goodbye!")
+}
+
+func parseAdminUserIDs(raw string) map[int64]struct{} {
+	admins := make(map[int64]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		v := strings.TrimSpace(part)
+		if v == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			continue
+		}
+		admins[id] = struct{}{}
+	}
+	return admins
 }

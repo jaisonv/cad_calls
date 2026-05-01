@@ -1,1 +1,3 @@
-requests==2.31.0
+requests
+# beautifulsoup4  # not currently used
+# lxml            # not currently used

@@ -5,8 +5,22 @@ import "time"
 // User represents a Telegram user
 type User struct {
 	TelegramID    int64
+	Username      string
+	FirstName     string
+	LastName      string
 	CheckInterval int // in minutes
 	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+type UserMonitoring struct {
+	TelegramID    int64
+	Username      string
+	FirstName     string
+	LastName      string
+	CheckInterval int
+	StreetCount   int
+	Streets       []string
 }
 
 // MonitoredStreet represents a street being monitored by a user
