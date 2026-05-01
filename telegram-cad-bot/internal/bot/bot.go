@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/jaisonv/telegram-cad-bot/internal/cad"
@@ -60,6 +61,9 @@ func NewBot(config *Config, logger *log.Logger) (*Bot, error) {
 
 	// Register handlers
 	bot.registerHandlers()
+	if err := bot.configureCommands(); err != nil {
+		logger.Printf("Warning: failed to configure bot commands: %v", err)
+	}
 
 	return bot, nil
 }
@@ -81,6 +85,43 @@ func (b *Bot) registerHandlers() {
 func (b *Bot) isAdmin(userID int64) bool {
 	_, ok := b.config.AdminUserIDs[userID]
 	return ok
+}
+
+func (b *Bot) configureCommands() error {
+	// Clear broad scopes first to avoid stale command visibility
+	// from previous BotFather/API setups.
+	_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeAllPrivateChats})
+	_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeAllGroupChats})
+	_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeAllChatAdmin})
+
+	defaultCommands := []tele.Command{
+		{Text: "start", Description: "Start the bot"},
+		{Text: "help", Description: "Show help"},
+		{Text: "add", Description: "Add street to watch"},
+		{Text: "remove", Description: "Remove watched street"},
+		{Text: "list", Description: "Show watched streets"},
+		{Text: "clear", Description: "Clear watch list"},
+		{Text: "status", Description: "Show bot status"},
+		{Text: "interval", Description: "Set check interval"},
+		{Text: "check", Description: "Check calls now"},
+	}
+
+	if err := b.bot.SetCommands(defaultCommands, &tele.CommandScope{Type: tele.CommandScopeDefault}); err != nil {
+		return err
+	}
+
+	// Keep /users hidden from command suggestions.
+	// Admins can still run it manually and it remains access-controlled in code.
+	adminIDs := make([]int64, 0, len(b.config.AdminUserIDs))
+	for id := range b.config.AdminUserIDs {
+		adminIDs = append(adminIDs, id)
+	}
+	sort.Slice(adminIDs, func(i, j int) bool { return adminIDs[i] < adminIDs[j] })
+	for _, adminID := range adminIDs {
+		_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeChat, ChatID: adminID})
+	}
+
+	return nil
 }
 
 // Start starts the bot
