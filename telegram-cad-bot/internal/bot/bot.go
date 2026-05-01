@@ -3,7 +3,6 @@ package bot
 import (
 	"fmt"
 	"log"
-	"sort"
 	"time"
 
 	"github.com/jaisonv/telegram-cad-bot/internal/cad"
@@ -88,12 +87,6 @@ func (b *Bot) isAdmin(userID int64) bool {
 }
 
 func (b *Bot) configureCommands() error {
-	// Clear broad scopes first to avoid stale command visibility
-	// from previous BotFather/API setups.
-	_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeAllPrivateChats})
-	_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeAllGroupChats})
-	_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeAllChatAdmin})
-
 	defaultCommands := []tele.Command{
 		{Text: "start", Description: "Start the bot"},
 		{Text: "help", Description: "Show help"},
@@ -106,19 +99,8 @@ func (b *Bot) configureCommands() error {
 		{Text: "check", Description: "Check calls now"},
 	}
 
-	if err := b.bot.SetCommands(defaultCommands, &tele.CommandScope{Type: tele.CommandScopeDefault}); err != nil {
+	if err := b.bot.SetCommands(defaultCommands); err != nil {
 		return err
-	}
-
-	// Keep /users hidden from command suggestions.
-	// Admins can still run it manually and it remains access-controlled in code.
-	adminIDs := make([]int64, 0, len(b.config.AdminUserIDs))
-	for id := range b.config.AdminUserIDs {
-		adminIDs = append(adminIDs, id)
-	}
-	sort.Slice(adminIDs, func(i, j int) bool { return adminIDs[i] < adminIDs[j] })
-	for _, adminID := range adminIDs {
-		_ = b.bot.DeleteCommands(&tele.CommandScope{Type: tele.CommandScopeChat, ChatID: adminID})
 	}
 
 	return nil

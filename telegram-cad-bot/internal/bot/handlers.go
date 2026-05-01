@@ -32,7 +32,6 @@ This bot monitors active CAD (Computer Aided Dispatch) calls and alerts you abou
 /status - Show bot status and settings
 /interval <minutes> - Set check interval (1-60 minutes)
 /check - Manually check for new calls now
-/users - Admin: list users and monitored streets
 /help - Show this help message
 
 *Example:*
