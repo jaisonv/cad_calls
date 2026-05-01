@@ -91,10 +91,29 @@ func (db *DB) ensureColumn(tableName, columnName, definition string) error {
 // GetOrCreateUser gets an existing user or creates a new one
 func (db *DB) GetOrCreateUser(telegramID int64) (*User, error) {
 	user := &User{}
+	var createdAtRaw interface{}
+	var updatedAtRaw interface{}
 	err := db.conn.QueryRow(`
 		SELECT telegram_id, COALESCE(username, ''), COALESCE(first_name, ''), COALESCE(last_name, ''), check_interval, created_at, COALESCE(updated_at, created_at)
 		FROM users WHERE telegram_id = ?
-	`, telegramID).Scan(&user.TelegramID, &user.Username, &user.FirstName, &user.LastName, &user.CheckInterval, &user.CreatedAt, &user.UpdatedAt)
+	`, telegramID).Scan(&user.TelegramID, &user.Username, &user.FirstName, &user.LastName, &user.CheckInterval, &createdAtRaw, &updatedAtRaw)
+
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "no such column") {
+		// Legacy schema fallback (before username/updated_at columns existed).
+		err = db.conn.QueryRow(`
+			SELECT telegram_id, check_interval, created_at
+			FROM users WHERE telegram_id = ?
+		`, telegramID).Scan(&user.TelegramID, &user.CheckInterval, &createdAtRaw)
+		if err == nil {
+			user.Username = ""
+			user.FirstName = ""
+			user.LastName = ""
+			if t, perr := parseSQLiteTime(createdAtRaw); perr == nil {
+				user.CreatedAt = t
+				user.UpdatedAt = t
+			}
+		}
+	}
 
 	if err == sql.ErrNoRows {
 		// Create new user
@@ -113,7 +132,59 @@ func (db *DB) GetOrCreateUser(telegramID int64) (*User, error) {
 		return user, nil
 	}
 
-	return user, err
+	if err != nil {
+		return user, err
+	}
+
+	createdAt, err := parseSQLiteTime(createdAtRaw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse created_at: %w", err)
+	}
+	updatedAt, err := parseSQLiteTime(updatedAtRaw)
+	if err != nil {
+		updatedAt = createdAt
+	}
+	user.CreatedAt = createdAt
+	user.UpdatedAt = updatedAt
+
+	return user, nil
+}
+
+func parseSQLiteTime(v interface{}) (time.Time, error) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, nil
+	case string:
+		return parseTimeString(t)
+	case []byte:
+		return parseTimeString(string(t))
+	case nil:
+		return time.Time{}, fmt.Errorf("nil time value")
+	default:
+		return time.Time{}, fmt.Errorf("unsupported time type %T", v)
+	}
+}
+
+func parseTimeString(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, fmt.Errorf("empty time string")
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02T15:04:05",
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognized time format: %q", value)
 }
 
 func (db *DB) UpsertUserProfile(telegramID int64, username, firstName, lastName string) error {
@@ -127,6 +198,18 @@ func (db *DB) UpsertUserProfile(telegramID int64, username, firstName, lastName 
 		SET username = ?, first_name = ?, last_name = ?, updated_at = ?
 		WHERE telegram_id = ?
 		`, username, firstName, lastName, time.Now(), telegramID)
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "no such column") {
+		// Legacy schema fallback: attempt to add missing columns then retry.
+		_ = db.ensureColumn("users", "username", "TEXT DEFAULT ''")
+		_ = db.ensureColumn("users", "first_name", "TEXT DEFAULT ''")
+		_ = db.ensureColumn("users", "last_name", "TEXT DEFAULT ''")
+		_ = db.ensureColumn("users", "updated_at", "TIMESTAMP")
+		_, err = db.conn.Exec(`
+			UPDATE users
+			SET username = ?, first_name = ?, last_name = ?, updated_at = ?
+			WHERE telegram_id = ?
+		`, username, firstName, lastName, time.Now(), telegramID)
+	}
 	if err != nil {
 		return err
 	}
