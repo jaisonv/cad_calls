@@ -57,16 +57,58 @@ func (b *Bot) HandleAdd(c tele.Context) error {
 	streetName = strings.TrimSpace(streetName)
 
 	if streetName == "" {
-		return c.Send("❌ Please provide a street name.\n\nExample: /add Main Street")
+		return c.Send("❌ Please provide at least one street name.\n\nExamples:\n/add Main Street\n/add Main Street, Oak Ave\n/add\nMain Street\nOak Ave")
 	}
 
 	userID := c.Sender().ID
-	if err := b.db.AddMonitoredStreet(userID, streetName); err != nil {
-		b.logger.Printf("Error adding street for user %d: %v", userID, err)
-		return c.Send("❌ Failed to add street. Please try again.")
+	streets := parseStreetList(streetName)
+	if len(streets) == 0 {
+		return c.Send("❌ No valid street names found.")
 	}
 
-	return c.Send(fmt.Sprintf("✅ Added '%s' to your watch list!", streetName))
+	added := 0
+	failed := 0
+	for _, street := range streets {
+		if err := b.db.AddMonitoredStreet(userID, street); err != nil {
+			b.logger.Printf("Error adding street for user %d: %v", userID, err)
+			failed++
+			continue
+		}
+		added++
+	}
+
+	if failed > 0 && added == 0 {
+		return c.Send("❌ Failed to add streets. Please try again.")
+	}
+
+	if len(streets) == 1 {
+		return c.Send(fmt.Sprintf("✅ Added '%s' to your watch list!", streets[0]))
+	}
+
+	return c.Send(fmt.Sprintf("✅ Processed %d streets: added %d, failed %d.", len(streets), added, failed))
+}
+
+func parseStreetList(input string) []string {
+	parts := strings.FieldsFunc(input, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r'
+	})
+
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		street := strings.TrimSpace(part)
+		if street == "" {
+			continue
+		}
+		key := strings.ToLower(street)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, street)
+	}
+
+	return out
 }
 
 // HandleRemove handles the /remove command
